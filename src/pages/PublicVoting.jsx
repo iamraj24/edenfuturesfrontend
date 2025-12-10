@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Container, Card, Form, Button, Spinner, Row, Col } from 'react-bootstrap';
 import Swal from 'sweetalert2';
 
+// 🔗 API CONFIGURATION
+// Reads the external backend URL from Vercel's environment variables (VITE_API_BASE_URL).
+// If the variable is not set (e.g., during local development), it defaults to an empty string.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''; 
+
 // Component for sign-in (replaces the separate SignIn.jsx)
 const VoterSignIn = ({ onSignedIn }) => {
     const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
@@ -12,7 +17,8 @@ const VoterSignIn = ({ onSignedIn }) => {
         e.preventDefault();
         setLoading(true); // Start loading
         try {
-            const response = await fetch('/api/public/signin', {
+            // >>> URL FIX HERE: Added API_BASE_URL to signin endpoint
+            const response = await fetch(`${API_BASE_URL}/api/public/signin`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
@@ -92,13 +98,13 @@ function PublicVoting({ voterId, onSignedIn }) {
             if (!voterId) return setLoading(false);
             setLoading(true);
             try {
-                // 1. Fetch Categories and Nominees
-                const catResponse = await fetch('/api/public/categories-nominees');
+                // >>> URL FIX HERE: Added API_BASE_URL to categories-nominees endpoint
+                const catResponse = await fetch(`${API_BASE_URL}/api/public/categories-nominees`);
                 const categories = await catResponse.json();
                 setData(categories);
 
-                // 2. Fetch Existing Votes for the signed-in voter
-                const votesResponse = await fetch(`/api/public/voter-votes/${voterId}`);
+                // >>> URL FIX HERE: Added API_BASE_URL to voter-votes endpoint
+                const votesResponse = await fetch(`${API_BASE_URL}/api/public/voter-votes/${voterId}`);
                 const existingVotes = await votesResponse.json(); 
                 
                 // FIX: Use snake_case keys from the backend response
@@ -142,7 +148,8 @@ function PublicVoting({ voterId, onSignedIn }) {
         });
         
         try {
-            const response = await fetch('/api/public/vote', {
+            // >>> URL FIX HERE: Added API_BASE_URL to vote submission endpoint
+            const response = await fetch(`${API_BASE_URL}/api/public/vote`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ voterId, categoryId, nomineeId }),
@@ -199,48 +206,48 @@ function PublicVoting({ voterId, onSignedIn }) {
                     
                     return (
                         <Col md={6} lg={4} key={category.id} className="mb-4">
-                        <Card className="shadow-sm h-100">
-                            <Card.Header as="h5" className="bg-light text-dark">
-                                {category.name}
-                                {hasVoted && <span className="badge bg-success float-end">VOTED</span>}
-                            </Card.Header>
-                            <Card.Body>
-                                {/* START: Category Description Added Here */}
-                                {category.description && (
-                                    <p className="text-muted small border-bottom pb-2 mb-3">
-                                        **Criteria:** {category.description}
-                                    </p>
-                                )}
-                                {/* END: Category Description Added Here */}
-                                <Form>
-                                    {category.nominees.map(nominee => (
-                                        <Form.Check
-                                            key={nominee.id}
-                                            type="radio"
-                                            id={`vote-${nominee.id}`}
-                                            name={`vote-category-${category.id}`}
-                                            label={nominee.name}
-                                            className="mb-2"
-                                            // Check the box if the user has voted and this is the winning nominee, OR if it's the current selection
-                                            checked={hasVoted ? (nominee.id === winningNomineeId) : (selectedVotes[category.id] === nominee.id)}
-                                            // Disable radio buttons if the user has already voted
-                                            disabled={hasVoted}
-                                            onChange={() => !hasVoted && setSelectedVotes(prev => ({ ...prev, [category.id]: nominee.id }))}
-                                        />
-                                    ))}
-                                    <Button 
-                                        variant={hasVoted ? "success" : "primary"}
-                                        size="sm" 
-                                        className="mt-3 w-100"
+                            <Card className="shadow-sm h-100">
+                                <Card.Header as="h5" className="bg-light text-dark">
+                                    {category.name}
+                                    {hasVoted && <span className="badge bg-success float-end">VOTED</span>}
+                                </Card.Header>
+                                <Card.Body>
+                                    {/* START: Category Description Added Here */}
+                                    {category.description && (
+                                        <p className="text-muted small border-bottom pb-2 mb-3">
+                                            **Criteria:** {category.description}
+                                        </p>
+                                    )}
+                                    {/* END: Category Description Added Here */}
+                                    <Form>
+                                        {category.nominees.map(nominee => (
+                                            <Form.Check
+                                                key={nominee.id}
+                                                type="radio"
+                                                id={`vote-${nominee.id}`}
+                                                name={`vote-category-${category.id}`}
+                                                label={nominee.name}
+                                                className="mb-2"
+                                                // Check the box if the user has voted and this is the winning nominee, OR if it's the current selection
+                                                checked={hasVoted ? (nominee.id === winningNomineeId) : (selectedVotes[category.id] === nominee.id)}
+                                                // Disable radio buttons if the user has already voted
+                                                disabled={hasVoted}
+                                                onChange={() => !hasVoted && setSelectedVotes(prev => ({ ...prev, [category.id]: nominee.id }))}
+                                            />
+                                        ))}
+                                        <Button 
+                                            variant={hasVoted ? "success" : "primary"}
+                                            size="sm" 
+                                            className="mt-3 w-100"
                                             // Disable the button if voted or if no selection has been made
-                                        disabled={hasVoted || !selectedVotes[category.id]}
-                                        onClick={() => handleSubmitVote(category.id)}
-                                    >
-                                        {hasVoted ? "Vote Submitted" : "Submit Vote"}
-                                    </Button>
-                                </Form>
-                            </Card.Body>
-                        </Card>
+                                            disabled={hasVoted || !selectedVotes[category.id]}
+                                            onClick={() => handleSubmitVote(category.id)}
+                                        >
+                                            {hasVoted ? "Vote Submitted" : "Submit Vote"}
+                                        </Button>
+                                    </Form>
+                                </Card.Body>
+                            </Card>
                         </Col>
                     );
                 })}
