@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Card, ListGroup, Spinner, Alert, Row, Col } from 'react-bootstrap';
 
+// 🔗 API CONFIGURATION
+// Reads the external backend URL from Vercel's environment variables (VITE_API_BASE_URL).
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''; 
+
 // NOTE: Since the /api/admin/winners route is protected on the backend, 
 // the admin key is required here. In a real public-facing app, you'd create 
 // a dedicated, unprotected public endpoint for results *after* voting closes.
@@ -15,7 +19,8 @@ function WinnersPage() {
         const fetchWinners = async () => {
             setLoading(true);
             try {
-                const response = await fetch('/api/admin/winners', {
+                // >>> URL FIX HERE: Added API_BASE_URL
+                const response = await fetch(`${API_BASE_URL}/api/admin/winners`, {
                     headers: { 'X-Admin-Key': ADMIN_KEY } // Using Admin Key to access results endpoint
                 });
                 
