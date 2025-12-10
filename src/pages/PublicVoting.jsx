@@ -57,14 +57,14 @@ const VoterSignIn = ({ onSignedIn }) => {
 
     return (
         <Card className="shadow-lg p-4 mx-auto" style={{ maxWidth: '500px' }}>
-            <Card.Title className="text-center text-primary">Voter Sign-In</Card.Title>
+            <Card.Title className="text-center text-success">Voter Sign-In</Card.Title>
             <Form onSubmit={handleSubmit}>
                 <Form.Group className="mb-3"><Form.Control name="name" type="text" placeholder="Full Name" onChange={(e) => setFormData({ ...formData, name: e.target.value })} required /></Form.Group>
                 <Form.Group className="mb-3"><Form.Control name="email" type="email" placeholder="Email Address" onChange={(e) => setFormData({ ...formData, email: e.target.value })} required /></Form.Group>
                 <Form.Group className="mb-4"><Form.Control name="phone" type="tel" placeholder="Phone Number" onChange={(e) => setFormData({ ...formData, phone: e.target.value })} required /></Form.Group>
                 
                 <Button 
-                    variant="primary" 
+                    variant="success" 
                     type="submit" 
                     className="w-100"
                     disabled={loading} // Disable button while loading

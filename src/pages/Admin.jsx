@@ -555,19 +555,19 @@ function AdminPage({ isAdmin, onLogin }) {
             </Card>
         </Container>
             ):(
-                <div className='mx-auto' style={{ maxWidth: '500px' }}>
-                    <h1 className='text-center'>Login</h1>
+                <div className='mx-auto mt-4 shadow p-3' style={{ maxWidth: '500px' }}>
+                    <h1 className='text-center text-success'>Login</h1>
                     <form className='container'>
                     <div className="form-floating mb-3">
-                        <input type="text" className="form-control" value={username} onChange={(e)=>setUsername(e.target.value)} id="floatingInput" placeholder="type your username" />
+                        <input type="text" className="form-control border border-3" value={username} onChange={(e)=>setUsername(e.target.value)} id="floatingInput" placeholder="type your username" />
                         <label htmlFor="floatingInput">Username</label>
-                        </div>
+                        </div> 
 
                         <div className="form-floating position-relative">
                         <input 
                             // Toggle between 'password' (dots) and 'text' (visible)
                             type={passwordVisible ? "text" : "password"} 
-                            className="form-control" 
+                            className="form-control border border-3" 
                             value={password} 
                             onChange={(e) => setPassword(e.target.value)} 
                             id="floatingPassword" 
@@ -577,8 +577,8 @@ function AdminPage({ isAdmin, onLogin }) {
 
                         {/* 3. The Toggle Button */}
                         <button
-                            type="button"
-                            className="btn position-absolute end-0 me-2"
+                                type="button"
+                            className="btn position-absolute  end-0 me-2 "
                             style={{ zIndex: 100, background: 'transparent', border: 'none', marginTop:"-50px" }}
                             onClick={togglePasswordVisibility}
                         >
@@ -586,7 +586,7 @@ function AdminPage({ isAdmin, onLogin }) {
                             {passwordVisible ? '🙈' : '👁️'}
                         </button>
                         <div>
-                            <button className='btn btn-primary my-3 px-4' onClick={Login}>Login</button>
+                            <button className='btn btn-success my-3 px-4' onClick={Login}>Login</button>
                         </div>
                         </div>
                     </form>
