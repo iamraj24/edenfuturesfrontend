@@ -43,7 +43,7 @@ function Layout({ children, voterId, onLogout }) {
             >
                 <Container>
                     {/* Use onClick handler on Brand to close navbar when clicked */}
-                    <Navbar.Brand as={Link} to="/" onClick={handleNavClick}>🏆 Eden Futures Award Nomination Hub</Navbar.Brand>
+                    <Navbar.Brand as={Link} to="/" onClick={handleNavClick}>🏆 Eden Futures Award </Navbar.Brand>
                     
                     <Navbar.Toggle aria-controls="basic-navbar-nav" />
                     <Navbar.Collapse id="basic-navbar-nav">
