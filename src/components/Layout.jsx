@@ -34,8 +34,8 @@ function Layout({ children, voterId, onLogout }) {
     return (
         <>
             <Navbar 
-                bg="dark" 
-                variant="dark" 
+                bg="success" 
+                variant="success" 
                 expand="lg" 
                 className="shadow-lg"
                 expanded={expanded} // 4. Bind the state to the Navbar
@@ -43,14 +43,14 @@ function Layout({ children, voterId, onLogout }) {
             >
                 <Container>
                     {/* Use onClick handler on Brand to close navbar when clicked */}
-                    <Navbar.Brand as={Link} to="/" onClick={handleNavClick}>🏆 Eden Futures Award </Navbar.Brand>
+                    <Navbar.Brand as={Link} to="/" onClick={handleNavClick} className='text-white'>🏆 Eden Futures Award </Navbar.Brand>
                     
                     <Navbar.Toggle aria-controls="basic-navbar-nav" />
                     <Navbar.Collapse id="basic-navbar-nav">
                         <Nav className="ms-auto">
                             {/* 6. Attach handleNavClick to close menu after navigation */}
-                            <Nav.Link as={Link} to="/" onClick={handleNavClick}>Vote Now</Nav.Link>
-                            <Nav.Link as={Link} to="/winners" onClick={handleNavClick}>Winners</Nav.Link>
+                            <Nav.Link as={Link} to="/" onClick={handleNavClick} className='text-white'>Vote Now</Nav.Link>
+                            <Nav.Link as={Link} to="/winners" onClick={handleNavClick} className='text-white'>Winners</Nav.Link>
                             {/* <Nav.Link as={Link} to="/admin" className="text-warning">Admin</Nav.Link> */}
                             
                             {/* Conditional Logout Button (Updated Text) */}
@@ -58,7 +58,7 @@ function Layout({ children, voterId, onLogout }) {
                                 <Button 
                                     variant={isAdminSession ? "outline-warning" : "outline-danger"} 
                                     size="sm"
-                                    className="ms-3 my-2 my-lg-0" 
+                                    className="ms-3 my-2 my-lg-0 bg-danger text-white" 
                                     onClick={handleLogout} 
                                 >
                                     {logoutButtonText} {/* Dynamic text */}

@@ -206,8 +206,8 @@ function PublicVoting({ voterId, onSignedIn }) {
                     
                     return (
                         <Col md={6} lg={4} key={category.id} className="mb-4">
-                            <Card className="shadow-sm h-100">
-                                <Card.Header as="h5" className="bg-light text-dark">
+                            <Card className="shadow-lg h-100">
+                                <Card.Header as="h5" className="bg-secondary text-white text-center">
                                     {category.name}
                                     {hasVoted && <span className="badge bg-success float-end">VOTED</span>}
                                 </Card.Header>
@@ -236,7 +236,7 @@ function PublicVoting({ voterId, onSignedIn }) {
                                             />
                                         ))}
                                         <Button 
-                                            variant={hasVoted ? "success" : "primary"}
+                                            variant={hasVoted ? "primary" : "success"}
                                             size="sm" 
                                             className="mt-3 w-100"
                                             // Disable the button if voted or if no selection has been made
