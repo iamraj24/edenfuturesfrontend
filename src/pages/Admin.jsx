@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Form, Button, Card, Table, Spinner } from 'react-bootstrap';
-import Swal from 'sweetalert2'; // Swal is imported and will be used for all alerts
+import Swal from 'sweetalert2'; 
 
 // 🔗 API CONFIGURATION
-// Reads the external backend URL from Vercel's environment variables (VITE_API_BASE_URL).
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''; 
 
 // NOTE: Replace this with a proper login/session token mechanism in production
@@ -15,88 +14,97 @@ const showSwal = (icon, title, text) => {
         icon: icon,
         title: title,
         text: text,
-        showConfirmButton: true, // Keep confirmation button for errors/warnings
+        showConfirmButton: true, 
     });
 };
 
-// Accept isAdmin and onLogin as props
 function AdminPage({ isAdmin, onLogin }) {
     const [categories, setCategories] = useState([]);
+    const [allNominees, setAllNominees] = useState([]); // Store all unique nominees globally
     const [newCatName, setNewCatName] = useState('');
-    const [newNominee, setNewNominee] = useState({ name: '', category_id: '' });
-    // NEW STATE: For managing category description input
+    const [newNominee, setNewNominee] = useState({ name: '' });
     const [newDescription, setNewDescription] = useState({ description: '', category_id: '' });
-    
     const [loading, setLoading] = useState(false);
-    // REMOVED: status state, as SweetAlert will now handle all transient messages
 
     useEffect(() => {
-        // Only fetch categories if the admin is actually logged in
         if (isAdmin) {
-            fetchCategories();
+            fetchCategoriesAndNominees();
         }
     }, [isAdmin]);
 
-    const fetchCategories = async () => {
+    // 🎯 UPDATED: The fetch logic now assumes a true M:M structure:
+    // 1. Fetch Categories
+    // 2. Fetch ALL Nominees (unique entities)
+    // 3. Fetch ALL Nominations (the join table links)
+    // 4. Stitch the data together (This is complex due to your hybrid API)
+    const fetchCategoriesAndNominees = async () => {
         setLoading(true);
         try {
-            // >>> URL FIX HERE: Added API_BASE_URL
-            const response = await fetch(`${API_BASE_URL}/api/admin/categories`, {
+            // 1. Fetch Categories
+            const catResp = await fetch(`${API_BASE_URL}/api/admin/categories`, {
                 headers: { 'X-Admin-Key': ADMIN_KEY }
             });
-            if (!response.ok) {
-                showSwal('error', 'Load Failed', `Failed to load categories. Status: ${response.status}`);
-                setLoading(false);
-                return;
-            }
-            const cats = await response.json();
+            const cats = catResp.ok ? await catResp.json() : [];
+            if (!catResp.ok) throw new Error(`Category load failed: ${catResp.status}`);
 
-            // 2) fetch nominees separately from the nominees table
-            let nominees = [];
-            try {
-                // >>> URL FIX HERE: Added API_BASE_URL
-                const nomResp = await fetch(`${API_BASE_URL}/api/admin/nominees`, {
-                    headers: { 'X-Admin-Key': ADMIN_KEY }
-                });
-                if (nomResp.ok) {
-                    nominees = await nomResp.json();
-                } else {
-                    // If nominees endpoint fails, still show categories but warn
-                    showSwal('warning', 'Nominees Load', `Failed to load nominees. Status: ${nomResp.status}`);
+            // 2. Fetch ALL Nominees (Should be unique by name/ID now)
+            // Assuming this endpoint now returns a flat list of unique nominees
+            const nomResp = await fetch(`${API_BASE_URL}/api/admin/nominees`, {
+                headers: { 'X-Admin-Key': ADMIN_KEY }
+            });
+            const nominees = nomResp.ok ? await nomResp.json() : [];
+            // NOTE: If your /api/admin/nominees still returns duplicated nominee entries
+            // (one per category), the logic below will need to deduplicate them for the 
+            // `allNominees` state. For now, we use a simple set of unique names/IDs.
+            
+            // 3. Fetch ALL Nominations (The join links)
+            const nomLinkResp = await fetch(`${API_BASE_URL}/api/admin/nominations`, {
+                headers: { 'X-Admin-Key': ADMIN_KEY }
+            });
+            const nominations = nomLinkResp.ok ? await nomLinkResp.json() : [];
+
+            // --- 4. Stitching Logic (M:M Frontend Simulation) ---
+            const nomineeMap = new Map();
+            nominees.forEach(n => nomineeMap.set(n.id, n));
+            
+            // Group nominations by category_id
+            const catNomineeLinks = new Map();
+            nominations.forEach(link => {
+                if (!catNomineeLinks.has(link.category_id)) {
+                    catNomineeLinks.set(link.category_id, []);
                 }
-            } catch (err) {
-                showSwal('warning', 'Nominees Network', 'Network error fetching nominees. Categories loaded without nominees.');
-            }
-
-            // Helper to safely read a nominee's category id (handles different shapes)
-            const getNomCategoryId = (n) => {
-                if (n == null) return undefined;
-                return n.category_id ?? n.categoryId ?? (n.category ? (n.category.id ?? n.categoryId) : undefined);
-            };
-
-            // 3) merge nominees into their categories by comparing category_id
-            const catsWithNominees = (cats || []).map(cat => {
-                const catIdStr = String(cat.id);
-                const matched = (nominees || []).filter(n => {
-                    const nCat = getNomCategoryId(n);
-                    return String(nCat) === catIdStr;
-                });
-                return { ...cat, nominees: matched };
+                const nominee = nomineeMap.get(link.nominee_id);
+                if (nominee) {
+                    catNomineeLinks.get(link.category_id).push(nominee);
+                }
             });
 
+            // Map nominees to categories
+            const catsWithNominees = (cats || []).map(cat => ({
+                ...cat,
+                nominees: catNomineeLinks.get(cat.id) || []
+            }));
+
+            // Deduplicate for the master list
+            const uniqueNominees = Array.from(nomineeMap.values());
+
             setCategories(catsWithNominees);
+            setAllNominees(uniqueNominees); // Use the global list of unique nominees
+
         } catch (error) {
-            showSwal('error', 'Network Error', 'Network error fetching categories.');
+            console.error(error);
+            showSwal('error', 'Load Failed', `Failed to load data: ${error.message}`);
         } finally {
             setLoading(false);
         }
     };
-
+    
+    // 🎯 UPDATED: Add Category now links all existing UNIQUE Nominees (using allNominees state)
     const handleAddCategory = async (e) => {
         e.preventDefault();
         Swal.fire({ title: 'Adding category...', text: 'Please wait.', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         try {
-            // >>> URL FIX HERE: Added API_BASE_URL
+            // 1. Create the Category
             const response = await fetch(`${API_BASE_URL}/api/admin/categories`, {
                 method: 'POST',
                 headers: { 
@@ -105,21 +113,43 @@ function AdminPage({ isAdmin, onLogin }) {
                 },
                 body: JSON.stringify({ name: newCatName }),
             });
-            if (response.ok) {
-                const newCategory = await response.json();
-                setCategories([...categories, newCategory]);
-                setNewCatName('');
-                showSwal('success', 'Success', `Category "${newCategory.name}" added successfully!`);
-            } else {
+
+            if (!response.ok) {
                 const errorData = await response.json();
                 showSwal('error', 'Failed', `Failed: ${errorData.message}`);
+                return;
             }
+            const newCategory = await response.json();
+            
+            // 2. Link all existing UNIQUE nominees to the new category
+            const linkPromises = allNominees.map(nominee => 
+                fetch(`${API_BASE_URL}/api/admin/nominations`, { // Assuming a new endpoint for linking
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': ADMIN_KEY 
+                    },
+                    body: JSON.stringify({ 
+                        category_id: newCategory.id, 
+                        nominee_id: nominee.id 
+                    }),
+                })
+            );
+
+            await Promise.all(linkPromises);
+            
+            // 3. Update State
+            setCategories(prev => [...prev, { ...newCategory, nominees: allNominees }]);
+            setNewCatName('');
+            showSwal('success', 'Success', `Category "${newCategory.name}" added and linked to ${allNominees.length} existing nominees!`);
+
         } catch (error) {
-            showSwal('error', 'Network Error', 'Network error adding category.');
+            console.error(error);
+            showSwal('error', 'Network Error', 'Network error adding category or linking nominees.');
         }
     };
-
-    // NEW FUNCTION: Handle adding or updating category description
+    
+    // This function is fine as it updates only the Category table.
     const handleAddDescription = async (e) => {
         e.preventDefault();
         if (!newDescription.category_id) {
@@ -127,13 +157,11 @@ function AdminPage({ isAdmin, onLogin }) {
         }
         Swal.fire({ title: 'Updating description...', text: 'Please wait.', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-        // Find the category being updated to potentially merge the new description locally
         const categoryToUpdate = categories.find(cat => String(cat.id) === String(newDescription.category_id));
 
         try {
-            // >>> URL FIX HERE: Added API_BASE_URL and dynamic ID
             const response = await fetch(`${API_BASE_URL}/api/admin/categories/${newDescription.category_id}`, {
-                method: 'PATCH', // Using PATCH for partial update
+                method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Admin-Key': ADMIN_KEY
@@ -142,7 +170,6 @@ function AdminPage({ isAdmin, onLogin }) {
             });
 
             if (response.ok) {
-                // Update local state to reflect the new description
                 if (categoryToUpdate) {
                     setCategories(categories.map(cat => 
                         String(cat.id) === String(newDescription.category_id) 
@@ -161,45 +188,72 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
 
-
+    // 🎯 UPDATED: Add Nominee now creates ONE Nominee entity and multiple Nomination links.
     const handleAddNominee = async (e) => {
         e.preventDefault();
-        if (!newNominee.category_id) {
-            return showSwal('warning', 'Input Required', 'Please select a category.');
+        if (!newNominee.name) {
+            return showSwal('warning', 'Input Required', 'Please enter a nominee name.');
         }
-        Swal.fire({ title: 'Adding nominee...', text: 'Please wait.', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        if (categories.length === 0) {
+            return showSwal('warning', 'No Categories', 'Please create a category first.');
+        }
+
+        Swal.fire({ title: `Adding nominee "${newNominee.name}"...`, text: 'Please wait.', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        
         try {
-            // >>> URL FIX HERE: Added API_BASE_URL
-            const response = await fetch(`${API_BASE_URL}/api/admin/nominees`, {
+            // 1. Create the unique Nominee record
+            const nomineeCreation = await fetch(`${API_BASE_URL}/api/admin/nominees`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-Admin-Key': ADMIN_KEY 
-                },
-                body: JSON.stringify(newNominee),
+                headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
+                body: JSON.stringify({ name: newNominee.name }), // Only send the name
             });
-            if (response.ok) {
-                const newNom = await response.json();
-                setNewNominee({ name: '', category_id: '' });
-                // NOTE: Nominee addition doesn't automatically update the list of nominees nested inside categories, 
-                // a manual fetch/refresh would be better, but we update the local state to reflect the new nominee immediately.
-                setCategories(prev => prev.map(cat => 
-                    String(cat.id) === String(newNom.category_id) 
-                    ? { ...cat, nominees: [...(cat.nominees || []), newNom] } 
-                    : cat
-                ));
-                showSwal('success', 'Success', `Nominee "${newNom.name}" added successfully!`);
-            } else {
-                const errorData = await response.json();
-                showSwal('error', 'Failed', `Failed: ${errorData.message}`);
+            
+            if (!nomineeCreation.ok) {
+                const errorData = await nomineeCreation.json();
+                // Check if it's a unique constraint error (nominee already exists by name)
+                if (nomineeCreation.status === 409) { 
+                     return showSwal('warning', 'Already Exists', `Nominee "${newNominee.name}" already exists. Cannot add.`);
+                }
+                throw new Error(errorData.message || 'Failed to create nominee entity.');
             }
+            const createdNominee = await nomineeCreation.json();
+
+            // 2. Link the new nominee to ALL categories using the nominations endpoint
+            const linkPromises = categories.map(cat => 
+                fetch(`${API_BASE_URL}/api/admin/nominations`, { // Assuming an endpoint for creating a link
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Admin-Key': ADMIN_KEY 
+                    },
+                    body: JSON.stringify({ 
+                        category_id: cat.id, 
+                        nominee_id: createdNominee.id 
+                    }),
+                })
+            );
+
+            await Promise.all(linkPromises);
+
+            // 3. Update local state: Add to the allNominees list and all category lists
+            setAllNominees(prev => [...prev, createdNominee]);
+            setCategories(prev => prev.map(cat => ({
+                ...cat,
+                nominees: [...(cat.nominees || []), createdNominee]
+            })));
+
+            setNewNominee({ name: '' });
+            showSwal('success', 'Success', `Nominee "${newNominee.name}" added and linked to all categories!`);
+
         } catch (error) {
-            showSwal('error', 'Network Error', 'Network error adding nominee.');
+            console.error(error);
+            showSwal('error', 'Network Error', `Error adding nominee: ${error.message}`);
         }
     };
 
-    // ---------- New: Edit / Delete handlers for categories & nominees ----------
+    // ---------- Edit / Delete handlers ----------
 
+    // Category handlers are fine as they only touch the Category table
     const handleEditCategory = async (cat) => {
         const { value: newName } = await Swal.fire({
             title: 'Edit Category Name',
@@ -213,13 +267,13 @@ function AdminPage({ isAdmin, onLogin }) {
 
         Swal.fire({ title: 'Updating category...', text: 'Please wait.', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         try {
-            // >>> URL FIX HERE: Added API_BASE_URL and dynamic ID
             const response = await fetch(`${API_BASE_URL}/api/admin/categories/${cat.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
                 body: JSON.stringify({ name: newName }),
             });
             if (response.ok) {
+                // Update category name in all places
                 setCategories(prev => prev.map(c => String(c.id) === String(cat.id) ? { ...c, name: newName } : c));
                 showSwal('success', 'Updated', `Category name updated to "${newName}".`);
             } else {
@@ -234,7 +288,7 @@ function AdminPage({ isAdmin, onLogin }) {
     const handleDeleteCategory = async (cat) => {
         const result = await Swal.fire({
             title: `Delete category "${cat.name}"?`,
-            text: "This will remove the category and its nominees (if backend deletes cascade).",
+            text: "This will remove the category and all its associated nominations (but not the nominees themselves).",
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Yes, delete it',
@@ -243,12 +297,12 @@ function AdminPage({ isAdmin, onLogin }) {
 
         Swal.fire({ title: 'Deleting...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         try {
-            // >>> URL FIX HERE: Added API_BASE_URL and dynamic ID
             const response = await fetch(`${API_BASE_URL}/api/admin/categories/${cat.id}`, {
                 method: 'DELETE',
                 headers: { 'X-Admin-Key': ADMIN_KEY }
             });
             if (response.ok) {
+                // Remove category from state
                 setCategories(prev => prev.filter(c => String(c.id) !== String(cat.id)));
                 showSwal('success', 'Deleted', `Category "${cat.name}" deleted.`);
             } else {
@@ -260,7 +314,8 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
 
-    const handleEditNominee = async (nom, categoryId) => {
+    // 🎯 UPDATED: Edit Nominee now updates the single Nominee entity name.
+    const handleEditNominee = async (nom) => {
         const { value: newName } = await Swal.fire({
             title: 'Edit Nominee Name',
             input: 'text',
@@ -273,21 +328,19 @@ function AdminPage({ isAdmin, onLogin }) {
 
         Swal.fire({ title: 'Updating nominee...', text: 'Please wait.', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         try {
-            // >>> URL FIX HERE: Added API_BASE_URL and dynamic ID
             const response = await fetch(`${API_BASE_URL}/api/admin/nominees/${nom.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
                 body: JSON.stringify({ name: newName }),
             });
             if (response.ok) {
-                setCategories(prev => prev.map(cat => {
-                    if (String(cat.id) !== String(categoryId)) return cat;
-                    return {
-                        ...cat,
-                        nominees: (cat.nominees || []).map(n => String(n.id) === String(nom.id) ? { ...n, name: newName } : n)
-                    };
-                }));
-                showSwal('success', 'Updated', `Nominee updated to "${newName}".`);
+                // Update name in both the master list and all category lists
+                setAllNominees(prev => prev.map(n => String(n.id) === String(nom.id) ? { ...n, name: newName } : n));
+                setCategories(prev => prev.map(cat => ({
+                    ...cat,
+                    nominees: (cat.nominees || []).map(n => String(n.id) === String(nom.id) ? { ...n, name: newName } : n)
+                })));
+                showSwal('success', 'Updated', `Nominee name updated to "${newName}".`);
             } else {
                 const err = await response.json();
                 showSwal('error', 'Failed', `Failed: ${err.message}`);
@@ -297,28 +350,35 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
 
-    const handleDeleteNominee = async (nom, categoryId) => {
+    // 🎯 UPDATED: Delete Nominee now removes the single Nominee entity AND all its links.
+    const handleDeleteNominee = async (nom) => {
         const result = await Swal.fire({
             title: `Delete nominee "${nom.name}"?`,
+            text: "This will delete the nominee from ALL categories and the main nominee list.",
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'Yes, delete',
+            confirmButtonText: 'Yes, delete permanently',
         });
         if (!result.isConfirmed) return;
 
         Swal.fire({ title: 'Deleting nominee...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         try {
-            // >>> URL FIX HERE: Added API_BASE_URL and dynamic ID
+            // Delete the unique nominee entity. Due to CASCADE DELETE on the DB, this should 
+            // automatically clean up all associated 'nominations' and 'votes'.
             const response = await fetch(`${API_BASE_URL}/api/admin/nominees/${nom.id}`, {
                 method: 'DELETE',
                 headers: { 'X-Admin-Key': ADMIN_KEY }
             });
             if (response.ok) {
-                setCategories(prev => prev.map(cat => {
-                    if (String(cat.id) !== String(categoryId)) return cat;
-                    return { ...cat, nominees: (cat.nominees || []).filter(n => String(n.id) !== String(nom.id)) };
-                }));
-                showSwal('success', 'Deleted', `Nominee "${nom.name}" deleted.`);
+                // Remove from the master list
+                setAllNominees(prev => prev.filter(n => String(n.id) !== String(nom.id)));
+                // Remove from all category lists
+                setCategories(prev => prev.map(cat => ({ 
+                    ...cat, 
+                    nominees: (cat.nominees || []).filter(n => String(n.id) !== String(nom.id)) 
+                })));
+
+                showSwal('success', 'Deleted', `Nominee "${nom.name}" deleted permanently.`);
             } else {
                 const err = await response.json();
                 showSwal('error', 'Failed', `Failed: ${err.message}`);
@@ -327,8 +387,8 @@ function AdminPage({ isAdmin, onLogin }) {
             showSwal('error', 'Network Error', 'Network error deleting nominee.');
         }
     };
-
-    // Login Form States
+    
+    // Login Logic (remains unchanged)
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [passwordVisible, setPasswordVisible] = useState(false);
@@ -340,10 +400,7 @@ function AdminPage({ isAdmin, onLogin }) {
     const Login=(e)=>{
         e.preventDefault();
         if(username == "edennn" && password == "edennn432"){
-            // 🔑 Store a flag in local storage upon successful login
             localStorage.setItem('isAdminLoggedIn', 'true');
-            
-            // Call the parent function provided via props instead of local state
             onLogin();
         }else{
             Swal.fire({
@@ -355,26 +412,20 @@ function AdminPage({ isAdmin, onLogin }) {
             return;
         }
     }
-
-    // Flatten nominees for the separate nominees table (attach category info)
-    const flatNominees = categories.flatMap(cat => (cat.nominees || []).map(n => ({
-        ...n,
-        categoryName: cat.name,
-        categoryId: cat.id
-    })));
+    
+    // Flat list is now just `allNominees` for the table display
+    const flatNominees = allNominees;
 
     return (
         <>
-            {/* Use isAdmin prop to control rendering */}
             {isAdmin == true ?(
             <Container className="my-5">
             <h2 className="text-center mb-4 text-warning">Admin Dashboard</h2>
-            {/* REMOVED: Alert component. All messages are now handled by Swal.fire */}
             
             {loading && <Spinner animation="border" className="d-block mx-auto my-5" />}
 
             <Row>
-                {/* 1. Create Category Card (Col md={4} for three-column layout) */}
+                {/* 1. Create Category Card */}
                 <Col md={4} className="mb-4">
                     <Card className="shadow-lg h-100">
                         <Card.Header as="h4" className="bg-dark text-white">Create Category</Card.Header>
@@ -398,7 +449,7 @@ function AdminPage({ isAdmin, onLogin }) {
                     </Card>
                 </Col>
 
-                {/* NEW CARD: Add Description (Col md={4} for three-column layout) */}
+                {/* 2. Add Description Card */}
                 <Col md={4} className="mb-4">
                     <Card className="shadow-lg h-100">
                         <Card.Header as="h4" className="bg-dark text-white">Add Description</Card.Header>
@@ -436,25 +487,12 @@ function AdminPage({ isAdmin, onLogin }) {
                     </Card>
                 </Col>
 
-                {/* 3. Add Nominee Card (Col md={4} for three-column layout) */}
+                {/* 3. Add Nominee Card (Updated for M:M) */}
                 <Col md={4} className="mb-4">
                     <Card className="shadow-lg h-100">
-                        <Card.Header as="h4" className="bg-dark text-white">Add Nominee</Card.Header>
+                        <Card.Header as="h4" className="bg-dark text-white">Add Nominee Entity</Card.Header>
                         <Card.Body>
                             <Form onSubmit={handleAddNominee}>
-                                <Form.Group className="mb-3">
-                                    <Form.Label>Select Category</Form.Label>
-                                    <Form.Select
-                                        value={newNominee.category_id}
-                                        onChange={(e) => setNewNominee({ ...newNominee, category_id: e.target.value })}
-                                        required
-                                    >
-                                        <option value="">-- Choose Category --</option>
-                                        {categories.map(cat => (
-                                            <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                        ))}
-                                    </Form.Select>
-                                </Form.Group>
                                 <Form.Group className="mb-3">
                                     <Form.Label>Nominee Name</Form.Label>
                                     <Form.Control
@@ -465,6 +503,9 @@ function AdminPage({ isAdmin, onLogin }) {
                                         required
                                     />
                                 </Form.Group>
+                                <div className="text-muted small mb-3">
+                                    * This creates a **unique nominee entity** and links it to **ALL** existing categories.
+                                </div>
                                 <Button variant="success" type="submit" className="w-100">
                                     Add Nominee
                                 </Button>
@@ -485,6 +526,7 @@ function AdminPage({ isAdmin, onLogin }) {
                                     <th>#</th>
                                     <th>Category Name</th>
                                     <th>Description</th>
+                                    <th>Nominees Count</th> {/* Added Nominee Count */}
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -498,6 +540,10 @@ function AdminPage({ isAdmin, onLogin }) {
                                         </td>
                                         <td>
                                             {cat.description ? <span style={{ fontSize: '0.95em' }}>{cat.description}</span> : <em className="text-muted">No description</em>}
+                                        </td>
+                                        <td>
+                                            {/* Display the count of linked nominees */}
+                                            {cat.nominees?.length || 0}
                                         </td>
                                         <td>
                                             <div className="d-flex">
@@ -515,17 +561,16 @@ function AdminPage({ isAdmin, onLogin }) {
                 </Card.Body>
             </Card>
 
-            {/* ----------------- Nominees Table ----------------- */}
+            {/* ----------------- Nominees Table (Now showing UNQIUE Nominee Entities) ----------------- */}
             <Card className="shadow-lg mt-4">
-                <Card.Header as="h4" className="bg-info text-white">Nominees</Card.Header>
+                <Card.Header as="h4" className="bg-info text-white">Unique Nominee Entities</Card.Header>
                 <Card.Body className="p-0">
                     {flatNominees.length > 0 ? (
                         <Table striped hover responsive className="mb-0">
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>Nominee</th>
-                                    <th>Category</th>
+                                    <th>Nominee Name</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -537,11 +582,10 @@ function AdminPage({ isAdmin, onLogin }) {
                                             <strong>{nom.name}</strong>
                                             <div className="text-muted" style={{ fontSize: '0.8em' }}>ID: {String(nom.id).substring(0,8)}...</div>
                                         </td>
-                                        <td>{nom.categoryName ?? <em className="text-muted">Unknown</em>}</td>
                                         <td>
                                             <div className="d-flex">
-                                                <Button size="sm" variant="outline-primary" className="me-2" onClick={() => handleEditNominee(nom, nom.categoryId)}>Edit</Button>
-                                                <Button size="sm" variant="outline-danger" onClick={() => handleDeleteNominee(nom, nom.categoryId)}>Delete</Button>
+                                                <Button size="sm" variant="outline-primary" className="me-2" onClick={() => handleEditNominee(nom)}>Edit Name</Button>
+                                                <Button size="sm" variant="outline-danger" onClick={() => handleDeleteNominee(nom)}>Delete All</Button>
                                             </div>
                                         </td>
                                     </tr>
@@ -565,7 +609,6 @@ function AdminPage({ isAdmin, onLogin }) {
 
                         <div className="form-floating position-relative">
                         <input 
-                            // Toggle between 'password' (dots) and 'text' (visible)
                             type={passwordVisible ? "text" : "password"} 
                             className="form-control border border-3" 
                             value={password} 
@@ -575,14 +618,12 @@ function AdminPage({ isAdmin, onLogin }) {
                         />
                         <label htmlFor="floatingPassword">Password</label>
 
-                        {/* 3. The Toggle Button */}
                         <button
-                                type="button"
+                            type="button"
                             className="btn position-absolute  end-0 me-2 "
                             style={{ zIndex: 100, background: 'transparent', border: 'none', marginTop:"-50px" }}
                             onClick={togglePasswordVisibility}
                         >
-                            {/* Simple text/emoji icon */}
                             {passwordVisible ? '🙈' : '👁️'}
                         </button>
                         <div>

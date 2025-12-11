@@ -4,7 +4,6 @@ import Swal from 'sweetalert2';
 
 // 🔗 API CONFIGURATION
 // Reads the external backend URL from Vercel's environment variables (VITE_API_BASE_URL).
-// If the variable is not set (e.g., during local development), it defaults to an empty string.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''; 
 
 // Component for sign-in (replaces the separate SignIn.jsx)
@@ -34,7 +33,8 @@ const VoterSignIn = ({ onSignedIn }) => {
                     timer: 1500,
                     showConfirmButton: false
                 }).then(() => {
-                    onSignedIn(data.voterId);
+                    // Assuming data.voterId exists and is the ID needed for voting
+                    onSignedIn(data.voterId); 
                 });
             } else {
                 Swal.fire({
@@ -84,11 +84,10 @@ const VoterSignIn = ({ onSignedIn }) => {
 };
 
 // Main Voting Area
-function PublicVoting({ voterId, onSignedIn }) {
+const PublicVotingArea = ({ voterId, onSignedIn }) => { // Renamed from PublicVoting to avoid conflict with App structure below
     const [data, setData] = useState([]); // Array of categories with nested nominees
     const [selectedVotes, setSelectedVotes] = useState({});
     const [loading, setLoading] = useState(true);
-    // REMOVED: statusMessage state (replaced by SweetAlert)
     
     // NEW STATE: Stores existing votes fetched from the server. Key: categoryId, Value: nomineeId
     const [votedCategories, setVotedCategories] = useState({});
@@ -98,18 +97,21 @@ function PublicVoting({ voterId, onSignedIn }) {
             if (!voterId) return setLoading(false);
             setLoading(true);
             try {
-                // >>> URL FIX HERE: Added API_BASE_URL to categories-nominees endpoint
+                // Fetch Categories and Nominees
                 const catResponse = await fetch(`${API_BASE_URL}/api/public/categories-nominees`);
+                if (!catResponse.ok) throw new Error('Failed to fetch categories.');
                 const categories = await catResponse.json();
                 setData(categories);
 
-                // >>> URL FIX HERE: Added API_BASE_URL to voter-votes endpoint
+                // Fetch Existing Votes for this voter
                 const votesResponse = await fetch(`${API_BASE_URL}/api/public/voter-votes/${voterId}`);
+                if (!votesResponse.ok) throw new Error('Failed to fetch existing votes.');
                 const existingVotes = await votesResponse.json(); 
                 
-                // FIX: Use snake_case keys from the backend response
+                // Map existing votes: category_id -> nominee_id
                 const votesMap = existingVotes.reduce((acc, vote) => {
-                    acc[vote.category_id] = vote.nominee_id; // <-- CORRECTED KEYS
+                    // Ensure keys match the backend response format (category_id, nominee_id)
+                    acc[vote.category_id] = vote.nominee_id; 
                     return acc;
                 }, {});
 
@@ -132,6 +134,9 @@ function PublicVoting({ voterId, onSignedIn }) {
 
     if (!voterId) return <Container className="my-5"><VoterSignIn onSignedIn={onSignedIn} /></Container>;
     if (loading) return <Spinner animation="border" className="d-block mx-auto mt-5" />;
+    
+    // Check if there are no categories to display a message
+    if (data.length === 0) return <h3 className="text-center mt-5">No categories available for voting.</h3>;
 
     const handleSubmitVote = async (categoryId) => {
         const nomineeId = selectedVotes[categoryId];
@@ -175,7 +180,7 @@ function PublicVoting({ voterId, onSignedIn }) {
                     text: result.message || 'Vote failed.'
                 });
                 
-                // ALREADY VOTED: If the backend confirms double vote, update the local state correctly
+                // ALREADY VOTED: If the backend confirms double vote, ensure local state is correct
                 if (result.message && result.message.toLowerCase().includes('already voted')) {
                     if (selectedVotes[categoryId]) {
                         setVotedCategories(prev => ({
@@ -197,19 +202,23 @@ function PublicVoting({ voterId, onSignedIn }) {
     return (
         <Container className="my-5">
             <h2 className="text-center mb-4 text-info">🗳️ Cast Your Votes</h2>
-            {/* REMOVED: Alert Component */}
+            {/* Display voter ID for reference (optional) */}
+            <p className="text-center text-muted">Voter ID: **{voterId}**</p>
 
             <Row>
                 {data.map(category => {
                     const hasVoted = !!votedCategories[category.id];
-                    const winningNomineeId = votedCategories[category.id];
+                    const existingVoteNomineeId = votedCategories[category.id];
+                    
+                    // FIX: Define a unique radio group name for this category.
+                    const radioGroupName = `vote-category-${category.id}`;
                     
                     return (
-                        <Col md={6} lg={4} key={category.id} className="mb-4">
-                            <Card className="shadow-lg h-100">
-                                <Card.Header as="h5" className="bg-secondary text-white text-center">
+                        <Col md={6} lg={4} key={category.id} className="mb-4 d-flex">
+                            <Card className="shadow-lg h-100 w-100">
+                                <Card.Header as="h5" className={`text-white text-center ${hasVoted ? 'bg-success' : 'bg-secondary'}`}>
                                     {category.name}
-                                    {hasVoted && <span className="badge bg-success float-end">VOTED</span>}
+                                    {hasVoted && <span className="badge bg-light text-success float-end">VOTED</span>}
                                 </Card.Header>
                                 <Card.Body>
                                     {/* START: Category Description Added Here */}
@@ -224,12 +233,17 @@ function PublicVoting({ voterId, onSignedIn }) {
                                             <Form.Check
                                                 key={nominee.id}
                                                 type="radio"
-                                                id={`vote-${nominee.id}`}
-                                                name={`vote-category-${category.id}`}
+                                                // CRITICAL FIX: Ensure the ID is unique across the page
+                                                id={`vote-${category.id}-${nominee.id}`} 
+                                                // CRITICAL FIX: Use a name unique to this category for grouping
+                                                name={radioGroupName}
                                                 label={nominee.name}
                                                 className="mb-2"
-                                                // Check the box if the user has voted and this is the winning nominee, OR if it's the current selection
-                                                checked={hasVoted ? (nominee.id === winningNomineeId) : (selectedVotes[category.id] === nominee.id)}
+                                                // Check the box if the user has an existing vote for this nominee, OR if it's the current selection
+                                                checked={hasVoted 
+                                                    ? (nominee.id === existingVoteNomineeId) 
+                                                    : (selectedVotes[category.id] === nominee.id)
+                                                }
                                                 // Disable radio buttons if the user has already voted
                                                 disabled={hasVoted}
                                                 onChange={() => !hasVoted && setSelectedVotes(prev => ({ ...prev, [category.id]: nominee.id }))}
@@ -256,4 +270,30 @@ function PublicVoting({ voterId, onSignedIn }) {
     );
 }
 
-export default PublicVoting;
+// Root component to manage the overall state (voterId)
+function App() {
+    // State to hold the voterId after successful sign-in
+    const [voterId, setVoterId] = useState(null); 
+    
+    // Optional: Use localStorage to persist the voterId across sessions
+    useEffect(() => {
+        const storedVoterId = localStorage.getItem('voterId');
+        if (storedVoterId) {
+            setVoterId(storedVoterId);
+        }
+    }, []);
+
+    const handleSignedIn = (id) => {
+        setVoterId(id);
+        localStorage.setItem('voterId', id); // Persist ID
+    };
+
+    return (
+        <PublicVotingArea 
+            voterId={voterId} 
+            onSignedIn={handleSignedIn} 
+        />
+    );
+}
+
+export default App;
