@@ -7,7 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001', 
+        target: 'https://edenfuturesbackend.onrender.com', 
         changeOrigin: true,
         secure: false,
       }
