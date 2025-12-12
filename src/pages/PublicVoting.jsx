@@ -4,7 +4,9 @@ import Swal from 'sweetalert2';
 
 // 🔗 API CONFIGURATION
 // Reads the external backend URL from Vercel's environment variables (VITE_API_BASE_URL).
-const API_BASE_URL = import.meta.env.API_BASE_URL || ''; 
+// const API_BASE_URL = import.meta.env.API_BASE_URL || ''; 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''; 
+
 
 // Component for sign-in (replaces the separate SignIn.jsx)
 const VoterSignIn = ({ onSignedIn }) => {
