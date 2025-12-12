@@ -83,8 +83,8 @@ const VoterSignIn = ({ onSignedIn }) => {
     );
 };
 
-// Main Voting Area (Component name corrected to PublicVoting)
-const PublicVoting = ({ voterId, onSignedIn }) => {
+// Main Voting Area
+const PublicVotingArea = ({ voterId, onSignedIn }) => { // Renamed from PublicVoting to avoid conflict with App structure below
     const [data, setData] = useState([]); // Array of categories with nested nominees
     const [selectedVotes, setSelectedVotes] = useState({});
     const [loading, setLoading] = useState(true);
@@ -132,10 +132,7 @@ const PublicVoting = ({ voterId, onSignedIn }) => {
         fetchData();
     }, [voterId]);
 
-    // Render VoterSignIn if no voterId is present
     if (!voterId) return <Container className="my-5"><VoterSignIn onSignedIn={onSignedIn} /></Container>;
-    
-    // Render loading spinner while fetching data
     if (loading) return <Spinner animation="border" className="d-block mx-auto mt-5" />;
     
     // Check if there are no categories to display a message
@@ -211,6 +208,7 @@ const PublicVoting = ({ voterId, onSignedIn }) => {
             <Row>
                 {data.map(category => {
                     const hasVoted = !!votedCategories[category.id];
+                    const existingVoteNomineeId = votedCategories[category.id];
                     
                     return (
                         <Col md={6} lg={4} key={category.id} className="mb-4 d-flex">
@@ -232,21 +230,17 @@ const PublicVoting = ({ voterId, onSignedIn }) => {
                                             <Form.Check
                                                 key={nominee.id}
                                                 type="radio"
-                                                // 🚀 FIX: Use combined ID for global uniqueness
-                                                id={`vote-category-${category.id}-nominee-${nominee.id}`}
-                                                
-                                                // The name must still be grouped by category.id
+                                                id={`vote-${nominee.id}`}
                                                 name={`vote-category-${category.id}`}
-                                                
                                                 label={nominee.name}
                                                 className="mb-2"
-                                                
-                                                // Use simplified checked logic
-                                                checked={selectedVotes[category.id] === nominee.id}
-                                                
+                                                // Check the box if the user has an existing vote for this nominee, OR if it's the current selection
+                                                checked={hasVoted 
+                                                    ? (nominee.id === existingVoteNomineeId) 
+                                                    : (selectedVotes[category.id] === nominee.id)
+                                                }
                                                 // Disable radio buttons if the user has already voted
                                                 disabled={hasVoted}
-                                                
                                                 onChange={() => !hasVoted && setSelectedVotes(prev => ({ ...prev, [category.id]: nominee.id }))}
                                             />
                                         ))}
@@ -271,5 +265,30 @@ const PublicVoting = ({ voterId, onSignedIn }) => {
     );
 }
 
+// Root component to manage the overall state (voterId)
+function App() {
+    // State to hold the voterId after successful sign-in
+    const [voterId, setVoterId] = useState(null); 
+    
+    // Optional: Use localStorage to persist the voterId across sessions
+    useEffect(() => {
+        const storedVoterId = localStorage.getItem('voterId');
+        if (storedVoterId) {
+            setVoterId(storedVoterId);
+        }
+    }, []);
 
-export default PublicVoting;
+    const handleSignedIn = (id) => {
+        setVoterId(id);
+        localStorage.setItem('voterId', id); // Persist ID
+    };
+
+    return (
+        <PublicVotingArea 
+            voterId={voterId} 
+            onSignedIn={handleSignedIn} 
+        />
+    );
+}
+
+export default App;
