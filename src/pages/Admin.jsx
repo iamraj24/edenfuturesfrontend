@@ -20,7 +20,8 @@ const showSwal = (icon, title, text) => {
 
 function AdminPage({ isAdmin, onLogin }) {
     const [categories, setCategories] = useState([]);
-    const [allNominees, setAllNominees] = useState([]); // Store all unique nominees globally
+    // NEW STATE: Store all unique nominee entities
+    const [allNominees, setAllNominees] = useState([]); 
     const [newCatName, setNewCatName] = useState('');
     const [newNominee, setNewNominee] = useState({ name: '' });
     const [newDescription, setNewDescription] = useState({ description: '', category_id: '' });
@@ -32,11 +33,7 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     }, [isAdmin]);
 
-    // 🎯 UPDATED: The fetch logic now assumes a true M:M structure:
-    // 1. Fetch Categories
-    // 2. Fetch ALL Nominees (unique entities)
-    // 3. Fetch ALL Nominations (the join table links)
-    // 4. Stitch the data together (This is complex due to your hybrid API)
+    // 🎯 UPDATED: Fetch logic for Many-to-Many structure
     const fetchCategoriesAndNominees = async () => {
         setLoading(true);
         try {
@@ -47,27 +44,24 @@ function AdminPage({ isAdmin, onLogin }) {
             const cats = catResp.ok ? await catResp.json() : [];
             if (!catResp.ok) throw new Error(`Category load failed: ${catResp.status}`);
 
-            // 2. Fetch ALL Nominees (Should be unique by name/ID now)
-            // Assuming this endpoint now returns a flat list of unique nominees
+            // 2. Fetch ALL Nominees (Unique entities)
             const nomResp = await fetch(`${API_BASE_URL}/api/admin/nominees`, {
                 headers: { 'X-Admin-Key': ADMIN_KEY }
             });
             const nominees = nomResp.ok ? await nomResp.json() : [];
-            // NOTE: If your /api/admin/nominees still returns duplicated nominee entries
-            // (one per category), the logic below will need to deduplicate them for the 
-            // `allNominees` state. For now, we use a simple set of unique names/IDs.
             
-            // 3. Fetch ALL Nominations (The join links)
+            // 3. Fetch ALL Nominations (The join table links: { category_id, nominee_id })
             const nomLinkResp = await fetch(`${API_BASE_URL}/api/admin/nominations`, {
                 headers: { 'X-Admin-Key': ADMIN_KEY }
             });
             const nominations = nomLinkResp.ok ? await nomLinkResp.json() : [];
 
             // --- 4. Stitching Logic (M:M Frontend Simulation) ---
+            // Create a map for quick nominee lookup
             const nomineeMap = new Map();
             nominees.forEach(n => nomineeMap.set(n.id, n));
             
-            // Group nominations by category_id
+            // Group nominations (nominee entities) by category_id
             const catNomineeLinks = new Map();
             nominations.forEach(link => {
                 if (!catNomineeLinks.has(link.category_id)) {
@@ -75,6 +69,7 @@ function AdminPage({ isAdmin, onLogin }) {
                 }
                 const nominee = nomineeMap.get(link.nominee_id);
                 if (nominee) {
+                    // Push the full nominee entity into the category's list
                     catNomineeLinks.get(link.category_id).push(nominee);
                 }
             });
@@ -82,14 +77,15 @@ function AdminPage({ isAdmin, onLogin }) {
             // Map nominees to categories
             const catsWithNominees = (cats || []).map(cat => ({
                 ...cat,
-                nominees: catNomineeLinks.get(cat.id) || []
+                // Attach the list of nominees linked to this category
+                nominees: catNomineeLinks.get(cat.id) || [] 
             }));
 
-            // Deduplicate for the master list
+            // Deduplicate for the master list (already unique from the /nominees endpoint)
             const uniqueNominees = Array.from(nomineeMap.values());
 
             setCategories(catsWithNominees);
-            setAllNominees(uniqueNominees); // Use the global list of unique nominees
+            setAllNominees(uniqueNominees); 
 
         } catch (error) {
             console.error(error);
@@ -99,7 +95,7 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
     
-    // 🎯 UPDATED: Add Category now links all existing UNIQUE Nominees (using allNominees state)
+    // 🎯 UPDATED: Add Category - links all existing unique nominees
     const handleAddCategory = async (e) => {
         e.preventDefault();
         Swal.fire({ title: 'Adding category...', text: 'Please wait.', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
@@ -123,7 +119,7 @@ function AdminPage({ isAdmin, onLogin }) {
             
             // 2. Link all existing UNIQUE nominees to the new category
             const linkPromises = allNominees.map(nominee => 
-                fetch(`${API_BASE_URL}/api/admin/nominations`, { // Assuming a new endpoint for linking
+                fetch(`${API_BASE_URL}/api/admin/nominations`, { 
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -139,6 +135,7 @@ function AdminPage({ isAdmin, onLogin }) {
             await Promise.all(linkPromises);
             
             // 3. Update State
+            // The new category gets all existing nominees attached to its list
             setCategories(prev => [...prev, { ...newCategory, nominees: allNominees }]);
             setNewCatName('');
             showSwal('success', 'Success', `Category "${newCategory.name}" added and linked to ${allNominees.length} existing nominees!`);
@@ -149,7 +146,7 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
     
-    // This function is fine as it updates only the Category table.
+    // Category Description update (remains largely the same, logic is sound)
     const handleAddDescription = async (e) => {
         e.preventDefault();
         if (!newDescription.category_id) {
@@ -188,7 +185,7 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
 
-    // 🎯 UPDATED: Add Nominee now creates ONE Nominee entity and multiple Nomination links.
+    // 🎯 UPDATED: Add Nominee - creates ONE Nominee entity and multiple Nomination links
     const handleAddNominee = async (e) => {
         e.preventDefault();
         if (!newNominee.name) {
@@ -205,12 +202,12 @@ function AdminPage({ isAdmin, onLogin }) {
             const nomineeCreation = await fetch(`${API_BASE_URL}/api/admin/nominees`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Admin-Key': ADMIN_KEY },
-                body: JSON.stringify({ name: newNominee.name }), // Only send the name
+                body: JSON.stringify({ name: newNominee.name }), 
             });
             
             if (!nomineeCreation.ok) {
                 const errorData = await nomineeCreation.json();
-                // Check if it's a unique constraint error (nominee already exists by name)
+                // Handle potential conflict (e.g., nominee name unique constraint)
                 if (nomineeCreation.status === 409) { 
                      return showSwal('warning', 'Already Exists', `Nominee "${newNominee.name}" already exists. Cannot add.`);
                 }
@@ -220,7 +217,7 @@ function AdminPage({ isAdmin, onLogin }) {
 
             // 2. Link the new nominee to ALL categories using the nominations endpoint
             const linkPromises = categories.map(cat => 
-                fetch(`${API_BASE_URL}/api/admin/nominations`, { // Assuming an endpoint for creating a link
+                fetch(`${API_BASE_URL}/api/admin/nominations`, { 
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -235,11 +232,12 @@ function AdminPage({ isAdmin, onLogin }) {
 
             await Promise.all(linkPromises);
 
-            // 3. Update local state: Add to the allNominees list and all category lists
+            // 3. Update local state: Add to the allNominees master list and all category lists
             setAllNominees(prev => [...prev, createdNominee]);
             setCategories(prev => prev.map(cat => ({
                 ...cat,
-                nominees: [...(cat.nominees || []), createdNominee]
+                // Add the new nominee to the existing nominees array for each category
+                nominees: [...(cat.nominees || []), createdNominee] 
             })));
 
             setNewNominee({ name: '' });
@@ -253,7 +251,7 @@ function AdminPage({ isAdmin, onLogin }) {
 
     // ---------- Edit / Delete handlers ----------
 
-    // Category handlers are fine as they only touch the Category table
+    // Category handlers
     const handleEditCategory = async (cat) => {
         const { value: newName } = await Swal.fire({
             title: 'Edit Category Name',
@@ -273,7 +271,7 @@ function AdminPage({ isAdmin, onLogin }) {
                 body: JSON.stringify({ name: newName }),
             });
             if (response.ok) {
-                // Update category name in all places
+                // Update category name in state
                 setCategories(prev => prev.map(c => String(c.id) === String(cat.id) ? { ...c, name: newName } : c));
                 showSwal('success', 'Updated', `Category name updated to "${newName}".`);
             } else {
@@ -314,7 +312,7 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
 
-    // 🎯 UPDATED: Edit Nominee now updates the single Nominee entity name.
+    // 🎯 UPDATED: Edit Nominee - updates the single Nominee entity name
     const handleEditNominee = async (nom) => {
         const { value: newName } = await Swal.fire({
             title: 'Edit Nominee Name',
@@ -334,8 +332,9 @@ function AdminPage({ isAdmin, onLogin }) {
                 body: JSON.stringify({ name: newName }),
             });
             if (response.ok) {
-                // Update name in both the master list and all category lists
+                // Update name in the master list
                 setAllNominees(prev => prev.map(n => String(n.id) === String(nom.id) ? { ...n, name: newName } : n));
+                // Update name in all category lists
                 setCategories(prev => prev.map(cat => ({
                     ...cat,
                     nominees: (cat.nominees || []).map(n => String(n.id) === String(nom.id) ? { ...n, name: newName } : n)
@@ -350,7 +349,7 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
 
-    // 🎯 UPDATED: Delete Nominee now removes the single Nominee entity AND all its links.
+    // 🎯 UPDATED: Delete Nominee - removes the single Nominee entity AND all its links
     const handleDeleteNominee = async (nom) => {
         const result = await Swal.fire({
             title: `Delete nominee "${nom.name}"?`,
@@ -363,8 +362,8 @@ function AdminPage({ isAdmin, onLogin }) {
 
         Swal.fire({ title: 'Deleting nominee...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         try {
-            // Delete the unique nominee entity. Due to CASCADE DELETE on the DB, this should 
-            // automatically clean up all associated 'nominations' and 'votes'.
+            // Delete the unique nominee entity. This is expected to trigger a CASCADE DELETE 
+            // on the backend to remove all associated nominations/votes automatically.
             const response = await fetch(`${API_BASE_URL}/api/admin/nominees/${nom.id}`, {
                 method: 'DELETE',
                 headers: { 'X-Admin-Key': ADMIN_KEY }
@@ -388,6 +387,9 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     };
     
+    // Alias for the display table
+    const flatNominees = allNominees;
+
     // Login Logic (remains unchanged)
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
@@ -399,7 +401,8 @@ function AdminPage({ isAdmin, onLogin }) {
 
     const Login=(e)=>{
         e.preventDefault();
-        if(username == "edennn" && password == "edennn432"){
+        // WARNING: Hardcoded credentials for development only. USE a proper token/session in production.
+        if(username === "edennn" && password === "edennn432"){ 
             localStorage.setItem('isAdminLoggedIn', 'true');
             onLogin();
         }else{
@@ -413,12 +416,9 @@ function AdminPage({ isAdmin, onLogin }) {
         }
     }
     
-    // Flat list is now just `allNominees` for the table display
-    const flatNominees = allNominees;
-
     return (
         <>
-            {isAdmin == true ?(
+            {isAdmin === true ?(
             <Container className="my-5">
             <h2 className="text-center mb-4 text-warning">Admin Dashboard</h2>
             
@@ -526,7 +526,7 @@ function AdminPage({ isAdmin, onLogin }) {
                                     <th>#</th>
                                     <th>Category Name</th>
                                     <th>Description</th>
-                                    <th>Nominees Count</th> {/* Added Nominee Count */}
+                                    <th>Nominees Count</th> 
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -585,7 +585,7 @@ function AdminPage({ isAdmin, onLogin }) {
                                         <td>
                                             <div className="d-flex">
                                                 <Button size="sm" variant="outline-primary" className="me-2" onClick={() => handleEditNominee(nom)}>Edit Name</Button>
-                                                <Button size="sm" variant="outline-danger" onClick={() => handleDeleteNominee(nom)}>Delete All</Button>
+                                                <Button size="sm" variant="outline-danger" onClick={() => handleDeleteNominee(nom)}>Delete</Button>
                                             </div>
                                         </td>
                                     </tr>
@@ -620,7 +620,7 @@ function AdminPage({ isAdmin, onLogin }) {
 
                         <button
                             type="button"
-                            className="btn position-absolute  end-0 me-2 "
+                            className="btn position-absolute end-0 me-2 "
                             style={{ zIndex: 100, background: 'transparent', border: 'none', marginTop:"-50px" }}
                             onClick={togglePasswordVisibility}
                         >
